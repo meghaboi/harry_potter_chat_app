@@ -360,7 +360,7 @@ with tab1:
     
     with col1:
         # Placeholder for character image (could be generated or uploaded)
-        st.image("https://via.placeholder.com/150", caption=st.session_state.selected_character)
+        st.image("https://www.universalorlando.com/webdata/k2/en/us/files/Images/gds/uor-wwohp-logo-3-kids-clouds-key-art-hero-b.jpg")
     
     with col2:
         st.markdown(f"**{st.session_state.selected_character}**")
