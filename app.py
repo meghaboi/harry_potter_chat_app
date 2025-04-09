@@ -8,10 +8,7 @@ import requests
 # Import custom modules
 from image_generation import generate_image
 from context_manager import chunk_text, get_active_chunk_context, search_context
-from config import GEMINI_API_KEY, MODEL_ID, CHAT_MODEL
-
-# Initialize Gemini client
-client = genai.Client(api_key=GEMINI_API_KEY)
+from config import MODEL_ID, CHAT_MODEL
 
 # Define Harry Potter characters
 HARRY_POTTER_CHARACTERS = {
@@ -168,11 +165,27 @@ def process_character_chat(prompt, message_placeholder, client):
 
     except Exception as e:
         message_placeholder.error(f"Error: {str(e)}")
-        
+
+def initialize_gemini_client():
+    """Initialize the Gemini client with the API key from session state"""
+    if "api_key" in st.session_state and st.session_state.api_key:
+        try:
+            return genai.Client(api_key=st.session_state.api_key)
+        except Exception as e:
+            st.error(f"Error initializing Gemini client: {str(e)}")
+            return None
+    return None
+
 # Set page configuration
 st.set_page_config(page_title="Harry Potter Character Chat", layout="wide")
 
 # Initialize session state variables
+if "api_key" not in st.session_state:
+    st.session_state.api_key = ""
+
+if "api_key_submitted" not in st.session_state:
+    st.session_state.api_key_submitted = False
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -208,6 +221,54 @@ for character in HARRY_POTTER_CHARACTERS:
     if f"{character}_chat_history" not in st.session_state:
         st.session_state[f"{character}_chat_history"] = []
 
+# API Key Form Pop-up
+if not st.session_state.api_key_submitted:
+    st.markdown("## Welcome to Harry Potter Character Chat")
+    
+    # Create a form for API key input
+    with st.form("api_key_form"):
+        st.write("Please enter your Gemini API key to continue")
+        api_key = st.text_input("Gemini API Key", type="password")
+        
+        # Submit button for the form
+        submit_button = st.form_submit_button("Submit")
+        
+        if submit_button:
+            if api_key:
+                st.session_state.api_key = api_key
+                st.session_state.api_key_submitted = True
+                st.experimental_rerun()
+            else:
+                st.error("Please enter a valid API key")
+    
+    # Add some guidance text
+    st.markdown("""
+    ### How to get a Gemini API key:
+    1. Go to [Google AI Studio](https://aistudio.google.com/)
+    2. Sign in with your Google account
+    3. Navigate to API keys section
+    4. Create a new API key
+    
+    This application uses Gemini to power Harry Potter character chats and image generation.
+    """)
+    
+    # Stop the rest of the app from loading until API key is submitted
+    st.stop()
+
+# Initialize Gemini client with the API key
+client = initialize_gemini_client()
+
+if not client:
+    st.error("Failed to initialize Gemini client. Please check your API key.")
+    
+    # Add a button to reset API key
+    if st.button("Change API Key"):
+        st.session_state.api_key_submitted = False
+        st.session_state.api_key = ""
+        st.experimental_rerun()
+        
+    st.stop()
+
 # Create tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Character Chat", "Image Generation", "Context Manager", "Prompt History", "Character Settings"])
 
@@ -242,27 +303,39 @@ with tab5:
     with st.expander("Advanced Character Settings"):
         character_custom_description = st.text_area(
             "Custom character description (optional)",
-            value="",
+            value=st.session_state.get("character_custom_description", ""),
             help="Add additional details about how you want the character to behave"
         )
+        st.session_state.character_custom_description = character_custom_description
         
         favorite_topics = st.text_input(
             "Character's favorite topics (comma separated)",
-            value="",
+            value=st.session_state.get("favorite_topics", ""),
             help="Topics this character would be particularly interested in discussing"
         )
+        st.session_state.favorite_topics = favorite_topics
         
         speaking_style = st.select_slider(
             "Speaking formality",
             options=["Very Casual", "Casual", "Neutral", "Formal", "Very Formal"],
-            value="Neutral"
+            value=st.session_state.get("speaking_style", "Neutral")
         )
+        st.session_state.speaking_style = speaking_style
         
         # Clear character conversation history
         if st.button(f"Clear {selected_character}'s Conversation History"):
             st.session_state[f"{selected_character}_chat_history"] = []
             st.session_state.messages = []
             st.success(f"{selected_character}'s conversation history cleared!")
+            st.experimental_rerun()
+    
+    # Add option to change API key
+    with st.expander("API Settings"):
+        st.write("Change your Gemini API key if needed")
+        if st.button("Change API Key"):
+            st.session_state.api_key_submitted = False
+            st.session_state.api_key = ""
+            st.success("API key reset. Please refresh the page.")
             st.experimental_rerun()
 
 # Tab 4: Prompt History
