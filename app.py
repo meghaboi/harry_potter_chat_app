@@ -237,7 +237,7 @@ if not st.session_state.api_key_submitted:
             if api_key:
                 st.session_state.api_key = api_key
                 st.session_state.api_key_submitted = True
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Please enter a valid API key")
     
@@ -265,7 +265,7 @@ if not client:
     if st.button("Change API Key"):
         st.session_state.api_key_submitted = False
         st.session_state.api_key = ""
-        st.experimental_rerun()
+        st.rerun()
         
     st.stop()
 
@@ -293,7 +293,7 @@ with tab5:
         old_character = st.session_state.selected_character
         st.session_state.selected_character = selected_character
         
-        st.experimental_rerun()
+        st.rerun()
     
     # Show character description
     st.subheader(f"About {selected_character}")
@@ -327,7 +327,7 @@ with tab5:
             st.session_state[f"{selected_character}_chat_history"] = []
             st.session_state.messages = []
             st.success(f"{selected_character}'s conversation history cleared!")
-            st.experimental_rerun()
+            st.rerun()
     
     # Add option to change API key
     with st.expander("API Settings"):
@@ -336,7 +336,7 @@ with tab5:
             st.session_state.api_key_submitted = False
             st.session_state.api_key = ""
             st.success("API key reset. Please refresh the page.")
-            st.experimental_rerun()
+            st.rerun()
 
 # Tab 4: Prompt History
 with tab4:
@@ -352,7 +352,7 @@ with tab4:
         if st.button("Clear Prompt History"):
             st.session_state.prompt_history = []
             st.success("Prompt history cleared!")
-            st.experimental_rerun()
+            st.rerun()
     else:
         st.info("No prompts have been sent yet. Interact with the application to see prompts here.")
 
@@ -388,7 +388,7 @@ with tab3:
                 st.session_state.context_chunks = []
                 st.session_state.active_chunk = 0
                 st.success("Book content cleared successfully!")
-                st.experimental_rerun()
+                st.rerun()
                 
     with col2:
         if st.session_state.context_chunks:
@@ -532,7 +532,7 @@ with tab2:
 
             if st.button("Clear Current Image"):
                 st.session_state.current_image = None
-                st.experimental_rerun()
+                st.rerun()
         else:
             st.info("No character image generated yet.")
 
