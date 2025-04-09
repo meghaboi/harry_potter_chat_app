@@ -7,7 +7,7 @@ import requests
 
 # Import custom modules
 from image_generation import generate_image
-from context_manager import chunk_text, get_active_chunk_context, search_context
+from context_manager import chunk_text, get_active_chunk_context, search_context, VectorStore, initialize_vector_store, update_vector_store
 from config import MODEL_ID, CHAT_MODEL
 
 # Define Harry Potter characters
@@ -43,6 +43,7 @@ def process_character_chat(prompt, message_placeholder, client):
             if context_option == "Use active chunk only":
                 book_context = get_active_chunk_context()
             elif context_option == "Auto-search relevant chunks":
+                # This will now automatically use vector search when context > 5000 chars
                 relevant_chunks = search_context(prompt)
                 if relevant_chunks:
                     book_context = "\n\n".join(relevant_chunks)
@@ -50,7 +51,14 @@ def process_character_chat(prompt, message_placeholder, client):
                     # Fallback to active chunk if no relevant chunks found
                     book_context = get_active_chunk_context()
             else:  # Use all chunks
-                book_context = "\n\n".join(st.session_state.context_chunks)
+                # Check if total context is too large
+                total_context_size = sum(len(chunk) for chunk in st.session_state.context_chunks)
+                if total_context_size > 10000:  # Arbitrary limit for "use all chunks" option
+                    st.warning("The full context is very large. Using most relevant chunks instead.")
+                    relevant_chunks = search_context(prompt, top_k=5)  # Increase top_k for broader context
+                    book_context = "\n\n".join(relevant_chunks)
+                else:
+                    book_context = "\n\n".join(st.session_state.context_chunks)
         else:
             book_context = st.session_state.context_text
         
@@ -117,7 +125,7 @@ def process_character_chat(prompt, message_placeholder, client):
             final_prompt = f"""
             {character_instructions}
             
-            Reference information from Harry Potter books:
+            Reference information from fan fiction, prioritize this info:
             {book_context}
             
             {conversation_history}
@@ -358,17 +366,17 @@ with tab4:
 
 # Tab 3: Context Manager
 with tab3:
-    st.header("Upload Harry Potter Books")
+    st.header("Upload Harry Potter Fan Fiction")
     
     st.markdown("""
-    Upload Harry Potter book text files to provide context for the characters.
+    Upload Harry Potter Fan Fiction text files to provide context for the characters.
     The content will be split into manageable chunks for better processing.
     """)
     
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        context_file = st.file_uploader("Upload a Harry Potter book", type=["txt"])
+        context_file = st.file_uploader("Upload Harry Potter Fan Fiction", type=["txt"])
         chunk_size = st.slider("Chunk size (characters)", 500, 5000, st.session_state.chunk_size, 100)
         st.session_state.chunk_size = chunk_size
         
@@ -381,23 +389,40 @@ with tab3:
             st.session_state.context_chunks = chunks
             st.session_state.active_chunk = 0
             
-            st.success(f"Harry Potter book uploaded and split into {len(chunks)} chunks!")
+            # Update the vector store with new chunks
+            update_vector_store()
+            
+            st.success(f"Harry Potter Fan Fiction uploaded and split into {len(chunks)} chunks!")
             
             if st.button("Clear Book Content"):
                 st.session_state.context_text = ""
                 st.session_state.context_chunks = []
                 st.session_state.active_chunk = 0
-                st.success("Book content cleared successfully!")
+                if 'vector_store' in st.session_state:
+                    st.session_state.vector_store = VectorStore()
+                st.success("Fan Fiction content cleared successfully!")
                 st.rerun()
                 
     with col2:
         if st.session_state.context_chunks:
-            st.subheader("Book Content Overview")
+            st.subheader("Fan Fiction Content Overview")
+            total_context_size = sum(len(c) for c in st.session_state.context_chunks)
             st.write(f"Total chunks: {len(st.session_state.context_chunks)}")
-            st.write(f"Average chunk size: {sum(len(c) for c in st.session_state.context_chunks) // len(st.session_state.context_chunks)} characters")
+            st.write(f"Total context size: {total_context_size} characters")
+            st.write(f"Average chunk size: {total_context_size // len(st.session_state.context_chunks)} characters")
+            
+            # Show vector database status
+            if total_context_size > 5000:
+                st.info("📊 Vector database is active for semantic search of context")
+                if 'vector_store' in st.session_state and st.session_state.vector_store.is_initialized:
+                    st.success("✅ Vector store initialized with all chunks")
+                else:
+                    st.warning("⚠️ Vector store not initialized")
+            else:
+                st.info("🔍 Using simple keyword search (context size < 5000 characters)")
             
             # Chunk navigation
-            st.subheader("Browse Book Chunks")
+            st.subheader("Browse Fan Fiction Chunks")
             active_chunk = st.number_input("Current chunk", 1, len(st.session_state.context_chunks), st.session_state.active_chunk + 1)
             st.session_state.active_chunk = active_chunk - 1
             
@@ -407,22 +432,29 @@ with tab3:
             # Chat settings
             st.subheader("Chat Context Settings")
             context_option = st.radio(
-                "How to use book content in chat:",
+                "How to use Fan Fiction content in chat:",
                 ["Use active chunk only", "Auto-search relevant chunks", "Use all chunks"]
             )
             st.session_state.context_option = context_option
             
             if context_option == "Auto-search relevant chunks":
-                st.info("The system will automatically find the most relevant book passages based on your query.")
+                st.info("The system will automatically find the most relevant Fan Fiction passages based on your query.")
+                if total_context_size > 5000:
+                    st.success("Using vector search for efficient semantic retrieval")
+                else:
+                    st.info("Using keyword-based search (faster for small contexts)")
             elif context_option == "Use all chunks":
-                st.warning("Using all chunks may exceed context limits for very large books.")
+                if total_context_size > 10000:
+                    st.warning("Using all chunks may exceed context limits. The system will automatically select relevant chunks if the total size is too large.")
+                else:
+                    st.info("All chunks will be included in the context.")
                 
         else:
             if st.session_state.context_text:
-                st.info("Book content is loaded as a single chunk.")
-                st.text_area("Book content", st.session_state.context_text, height=300, disabled=True)
+                st.info("Fan Fiction content is loaded as a single chunk.")
+                st.text_area("Fan Fiction content", st.session_state.context_text, height=300, disabled=True)
             else:
-                st.info("No Harry Potter book loaded. Upload a text file to provide context for the characters.")
+                st.info("No Harry Potter Fan Fiction loaded. Upload a text file to provide context for the characters.")
 
 # Tab 1: Chat with Character
 with tab1:

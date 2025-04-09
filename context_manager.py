@@ -1,5 +1,8 @@
 import streamlit as st
 import re
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 def chunk_text(text, chunk_size):
     """
@@ -46,31 +49,90 @@ def chunk_text(text, chunk_size):
 
 def get_active_chunk_context():
     """Get the active chunk or return empty string if no chunks available"""
-    # Fixed the typo in sessionaa_state to session_state
     if hasattr(st.session_state, 'context_chunks') and st.session_state.context_chunks and len(st.session_state.context_chunks) > st.session_state.active_chunk:
         return st.session_state.context_chunks[st.session_state.active_chunk]
     return ""
 
+class VectorStore:
+    """Simple vector database implementation for text chunks"""
+    def __init__(self):
+        self.vectorizer = TfidfVectorizer()
+        self.vectors = None
+        self.chunks = []
+        self.is_initialized = False
+        
+    def add_documents(self, chunks):
+        """Add documents to the vector store and create vectors"""
+        self.chunks = chunks
+        if chunks:
+            self.vectors = self.vectorizer.fit_transform(chunks)
+            self.is_initialized = True
+        
+    def similarity_search(self, query, top_k=3):
+        """Search for most similar chunks to the query"""
+        if not self.is_initialized or not self.chunks:
+            return []
+        
+        # Transform query to vector space
+        query_vector = self.vectorizer.transform([query])
+        
+        # Calculate similarity scores
+        similarities = cosine_similarity(query_vector, self.vectors)[0]
+        
+        # Get indices of top_k most similar chunks
+        top_indices = np.argsort(similarities)[-top_k:][::-1]
+        
+        # Filter out chunks with zero similarity
+        results = [(self.chunks[i], similarities[i]) for i in top_indices if similarities[i] > 0]
+        
+        # Return just the chunks
+        return [chunk for chunk, score in results]
+
+# Initialize vector store in session state if it doesn't exist
+def initialize_vector_store():
+    if 'vector_store' not in st.session_state:
+        st.session_state.vector_store = VectorStore()
+
+def update_vector_store():
+    """Update vector store with current chunks"""
+    initialize_vector_store()
+    if hasattr(st.session_state, 'context_chunks') and st.session_state.context_chunks:
+        st.session_state.vector_store.add_documents(st.session_state.context_chunks)
+
 def search_context(query, top_k=3):
     """
-    Simple keyword-based search through all chunks.
-    Returns the top k chunks that have the most keyword matches.
+    Search through context chunks using the appropriate method based on size.
+    Returns the top k chunks that are most relevant to the query.
     """
     if not hasattr(st.session_state, 'context_chunks') or not st.session_state.context_chunks:
         return []
     
-    # Extract keywords from the query (simple approach)
-    keywords = re.findall(r'\b\w{3,}\b', query.lower())
+    # Check if total context size exceeds threshold (5000 characters)
+    total_context_size = sum(len(chunk) for chunk in st.session_state.context_chunks)
     
-    # Score each chunk based on keyword matches
-    chunk_scores = []
-    for i, chunk in enumerate(st.session_state.context_chunks):
-        chunk_lower = chunk.lower()
-        score = sum(1 for keyword in keywords if keyword in chunk_lower)
-        chunk_scores.append((i, score))
+    # Use vector search for large contexts
+    if total_context_size > 5000:
+        initialize_vector_store()
+        # Make sure vector store is updated with latest chunks
+        if not st.session_state.vector_store.is_initialized:
+            update_vector_store()
+        
+        return st.session_state.vector_store.similarity_search(query, top_k)
     
-    # Sort by score and get top k
-    chunk_scores.sort(key=lambda x: x[1], reverse=True)
-    top_chunks = [st.session_state.context_chunks[i] for i, score in chunk_scores[:top_k] if score > 0]
-    
-    return top_chunks
+    # For smaller contexts, use the simple keyword-based search
+    else:
+        # Extract keywords from the query (simple approach)
+        keywords = re.findall(r'\b\w{3,}\b', query.lower())
+        
+        # Score each chunk based on keyword matches
+        chunk_scores = []
+        for i, chunk in enumerate(st.session_state.context_chunks):
+            chunk_lower = chunk.lower()
+            score = sum(1 for keyword in keywords if keyword in chunk_lower)
+            chunk_scores.append((i, score))
+        
+        # Sort by score and get top k
+        chunk_scores.sort(key=lambda x: x[1], reverse=True)
+        top_chunks = [st.session_state.context_chunks[i] for i, score in chunk_scores[:top_k] if score > 0]
+        
+        return top_chunks
